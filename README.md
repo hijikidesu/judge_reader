@@ -14,7 +14,9 @@ SOUND VOLTEXのプレイ画面に表示される詳細判定を読み取るツ�
    `ffmpeg -i プレイ画面の動画名 -vf "crop=22:94:555:403,transpose=1" -an 判定だけ切り取った動画名`
 <img width="92" height="32" alt="Image" src="https://github.com/user-attachments/assets/2fbb8f02-183e-458e-9745-b7fc050a30e2" />
 
-4. `python judge_reader.py`を実行する
+4. `movie_file_path`に作成した動画ファイルのパスを入れる
+   
+5. `python judge_reader.py`を実行する
 
 # 動作確認環境
 ・conda 24.11.3
