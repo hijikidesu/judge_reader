@@ -6,13 +6,9 @@ from PIL import Image
 import tensorflow as tf
 import os
 
-data_folder_path = r""
+movie_file_path = "" #判定の部分を切り取った動画ファイルのパスを入れる
 
-judge_data_folder_path = os.path.join(data_folder_path,"judge")
-
-result_folder_path = os.path.join(data_folder_path,"judge_list")
-
-judge_data_path = [f for f in os.listdir(judge_data_folder_path) if f.endswith('.mp4')] 
+result_file_path = "judge_list.csv"
 
 classes = ["0","1","2","3","4","5","6","7","8","9","-","+"] #判別したいラベル
 num_classes = len(classes) #ラベルの数
@@ -171,114 +167,110 @@ def extract_each_character(frame,judge_img_list): #画像から1文字ずつ抽�
     return img_number
 
 
-for movie_no,judge_movie in enumerate(judge_data_path):
-    file_path = os.path.join(judge_data_folder_path, judge_movie)  # フルパスを作成
-    music_name = judge_movie.replace('_judge.mp4', '')
-    video = cv2.VideoCapture(file_path)
+music_name = movie_file_path.replace('_judge.mp4', '')
+video = cv2.VideoCapture(movie_file_path)
 
-    # 動画情報の取得
-    frameAll = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    framerate = video.get(cv2.CAP_PROP_FPS) # 動画フレームレートを取得
+# 動画情報の取得
+    rameAll = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+framerate = video.get(cv2.CAP_PROP_FPS) # 動画フレームレートを取得
 
-    judge_img_list = []
+judge_img_list = []
 
-    img_number_list = []
-    frame_list = []
-    second_list = []
+img_number_list = []
+frame_list = []
+second_list = []
 
-    start_time = time.time()
+start_time = time.time()
 
-
-    #1フレームごとの画像をリストに
-    for i in range(0,frameAll,1):
-        ret, frame = video.read() # [ret]はread()の処理結果、[frame]は処理画像が格納される
+#1フレームごとの画像をリストに
+for i in range(0,frameAll,1):
+    ret, frame = video.read() # [ret]はread()の処理結果、[frame]は処理画像が格納される
     
-    
-        # フレームが正しく取得されているか確認
-        if not ret:
-            print(f"フレーム {i} の取得に失敗しました。")
-            continue
+    # フレームが正しく取得されているか確認
+    if not ret:
+        print(f"フレーム {i} の取得に失敗しました。")
+        continue
         
-        img_number = extract_each_character(frame,judge_img_list)
+    img_number = extract_each_character(frame,judge_img_list)
 
-        if img_number is None:
-            continue
+    if img_number is None:
+        continue
 
-        second = i/framerate
-        img_number_list.append(img_number)
-        frame_list.append(i)
-        second_list.append(second)
+    second = i/framerate
+    img_number_list.append(img_number)
+    frame_list.append(i)
+    second_list.append(second)
         
 
-    #print("画像読み込み完了!")
+#print("画像読み込み完了!")
 
-    judge_img_list = np.array(judge_img_list)
-    judge_img_list = judge_img_list.astype("float") / 255
+judge_img_list = np.array(judge_img_list)
+judge_img_list = judge_img_list.astype("float") / 255
 
-    judge_img_list = np.expand_dims(judge_img_list, axis=-1) 
+judge_img_list = np.expand_dims(judge_img_list, axis=-1) 
 
-    judge_prediction_list = model.predict(judge_img_list, verbose=0)
-    judge_pre_list = tf.argmax(judge_prediction_list, axis=1)
+judge_prediction_list = model.predict(judge_img_list, verbose=0)
+judge_pre_list = tf.argmax(judge_prediction_list, axis=1)
 
-    judge_list = []
+judge_list = []
 
-    for count in range(len(img_number_list)):
-        pop_judge = tf.slice(judge_pre_list, [0], [img_number_list[count]])  # スライスで必要な部分を取得
-        # 残りの部分を更新
-        judge_pre_list = tf.slice(judge_pre_list, [img_number_list[count]], [tf.size(judge_pre_list) - img_number_list[count]])
-        pop_judge = pop_judge.numpy() # 出力のために .numpy() で変換
+for count in range(len(img_number_list)):
+    pop_judge = tf.slice(judge_pre_list, [0], [img_number_list[count]])  # スライスで必要な部分を取得
+    # 残りの部分を更新
+    judge_pre_list = tf.slice(judge_pre_list, [img_number_list[count]], [tf.size(judge_pre_list) - img_number_list[count]])
+    pop_judge = pop_judge.numpy() # 出力のために .numpy() で変換
 
-        judge = ""
+    judge = ""
 
-        for l in range(len(pop_judge)):
+    for l in range(len(pop_judge)):
                 
-            if l != len(pop_judge) -1:
-                judge += classes[pop_judge[l]]
+        if l != len(pop_judge) -1:
+            judge += classes[pop_judge[l]]
             
-            else:
-                judge += "." + classes[pop_judge[l]]
-
-        judge_list.append(judge)
-
-    former_judge = ''
-    result_judge = []
-    result_frame = []
-    result_second = []
-    result = pd.DataFrame() 
-
-    for index,judge in enumerate(judge_list):
-    
-        skip_outer_loop = False  # フラグを初期化
-    
-        if judge[0] != '+' and judge[0] != '-': #最初がプラマイじゃない場合は追加しない
-            continue
-
-        for f in range(1,len(judge)):#数字のところにプラマイがあれば追加しない
-            if f == len(judge)-2:
-                continue
-            
-            if judge[f] == '+' or judge[f] == '-':
-                skip_outer_loop = True  # フラグを設定
-                break
-            
-        if skip_outer_loop: #あかんかったら追加しない
-            continue     
-
-        if former_judge != judge:
-            result_judge.append(judge)
-            result_frame.append(frame_list[index])
-            result_second.append(second_list[index])
-            former_judge = judge
         else:
+            judge += "." + classes[pop_judge[l]]
+
+    judge_list.append(judge)
+
+former_judge = ''
+result_judge = []
+result_frame = []
+result_second = []
+result = pd.DataFrame() 
+
+for index,judge in enumerate(judge_list):
+    
+    skip_outer_loop = False  # フラグを初期化
+    
+    if judge[0] != '+' and judge[0] != '-': #最初がプラマイじゃない場合は追加しない
+        continue
+
+    for f in range(1,len(judge)):#数字のところにプラマイがあれば追加しない
+        if f == len(judge)-2:
             continue
+            
+        if judge[f] == '+' or judge[f] == '-':
+            skip_outer_loop = True  # フラグを設定
+            break
+            
+    if skip_outer_loop: #あかんかったら追加しない
+        continue     
 
-    result['judge'] = result_judge
-    result['frame'] = result_frame
-    result['second'] = result_second
+    if former_judge != judge:
+        result_judge.append(judge)
+        result_frame.append(frame_list[index])
+        result_second.append(second_list[index])
+        former_judge = judge
+    else:
+        continue
 
-    csv_file_name = f"{music_name}_judge_list.csv"
+result['judge'] = result_judge
+result['frame'] = result_frame
+result['second'] = result_second
 
-    result.to_csv(os.path.join(result_folder_path, csv_file_name),index = False)
-    print(f"{movie_no+1}データ目のcsvファイル出力完了！")
+csv_file_name = f"{music_name}_judge_list.csv"
 
-    video.release()  # 動画を解放する
+result.to_csv(result_file_path,index = False)
+print("出力完了！")
+
+video.release()  # 動画を解放する
